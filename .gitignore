@@ -1,0 +1,16 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# local configs/secrets
+*.env
+rclone.conf
+
+# outputs
+processed/
+incoming/
+archive/
+
+# OS
+.DS_Store

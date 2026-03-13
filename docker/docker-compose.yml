@@ -1,0 +1,20 @@
+services:
+  color_palette_creation:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: color_palette_creation
+    restart: unless-stopped
+    environment:
+      - CONFIG_PATH=/config/color_palette_config.ini
+    volumes:
+      # Incoming pairs
+      - /mnt/nas2/Color_Palette_Creation/incoming:/mnt/in
+      # Processed outputs (per-base folders)
+      - /mnt/nas2/Color_Palette_Creation/processed:/mnt/out
+      # Archive of processed inputs
+      - /mnt/nas2/Color_Palette_Creation/archive:/mnt/archive
+      # Config (must be a FILE, not a directory)
+      - /mnt/nas2/Color_Palette_Creation/color_palette_config.ini:/config/color_palette_config.ini:ro
+      # rclone config (contains tokens; keep private on host)
+      - /home/brett/.config/rclone/rclone.conf:/root/.config/rclone/rclone.conf:ro
