@@ -1,9 +1,9 @@
 services:
-  color_palette_creation:
+  color_palette_creation_w_gui:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: color_palette_creation
+    container_name: color_palette_creation_w_gui
     restart: unless-stopped
     environment:
       - CONFIG_PATH=/config/color_palette_config.ini
@@ -19,11 +19,11 @@ services:
       # rclone config (contains tokens; keep private on host)
       - /home/brett/.config/rclone/rclone.conf:/root/.config/rclone/rclone.conf:ro
 
-  palette_ui:
+  color_palette_creation_w_gui_ui:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ui
-    container_name: palette_ui
+    container_name: color_palette_creation_w_gui_ui
     restart: unless-stopped
     ports:
       - "4040:4040"
