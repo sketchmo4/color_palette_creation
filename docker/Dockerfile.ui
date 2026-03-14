@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /ui
+
+COPY ui/requirements.txt /ui/requirements.txt
+RUN pip install --no-cache-dir -r /ui/requirements.txt
+
+COPY ui /ui
+
+ENV IN_DIR=/mnt/in
+ENV OUT_DIR=/mnt/out
+
+EXPOSE 4040
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "4040"]
