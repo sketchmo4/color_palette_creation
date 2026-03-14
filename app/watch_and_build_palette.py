@@ -669,6 +669,38 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
 # Drive upload (rclone)
 # =========================
 
+def folder_signature(root: str) -> float:
+    """Return a single float signature based on max mtime under root."""
+    max_m = 0.0
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for fn in filenames:
+            try:
+                st = os.stat(os.path.join(dirpath, fn))
+                if st.st_mtime > max_m:
+                    max_m = st.st_mtime
+            except FileNotFoundError:
+                pass
+    return max_m
+
+
+def load_drive_state(stem_dir: str) -> dict:
+    p = os.path.join(stem_dir, '.drive_upload.json')
+    try:
+        with open(p, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_drive_state(stem_dir: str, state: dict) -> None:
+    p = os.path.join(stem_dir, '.drive_upload.json')
+    try:
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2)
+    except Exception:
+        pass
+
+
 def drive_upload(cfg: dict, stems: list[str]):
     """Upload results to Google Drive via rclone.
 
@@ -692,6 +724,14 @@ def drive_upload(cfg: dict, stems: list[str]):
         return
 
     for stem in stems:
+        # skip unchanged uploads
+        stem_dir = os.path.join(out_root, stem)
+        sig_now = folder_signature(stem_dir)
+        st = load_drive_state(stem_dir)
+        sig_last = float(st.get("folder_mtime", 0.0) or 0.0)
+        if sig_now <= sig_last:
+            print(f"☁️ drive upload: skip unchanged {stem}")
+            continue
         if mode == "pdf_only":
             src = os.path.join(out_root, stem, f"{stem}_report.pdf")
             dest = f"{remote}:"
@@ -711,6 +751,7 @@ def drive_upload(cfg: dict, stems: list[str]):
                 print(res.stderr.strip())
         else:
             print("✅ drive upload ok:", stem)
+            save_drive_state(stem_dir, {"folder_mtime": sig_now, "ts": time.time()})
 
 
 def find_ready_pairs(input_dir, marked_suffix="_x", require_pairs=True):
