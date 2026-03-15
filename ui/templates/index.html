@@ -36,7 +36,22 @@
       <a href="/runs">Browse runs</a>
     </div>
 
-    <h3>Folders</h3>
+    <h2>Current paints (from config)</h2>
+    <div class="hint">Reading: {{ config_path }}</div>
+    <div class="hint">If no <code>[paints]</code> section exists, defaults are shown.</div>
+
+    <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 120px 90px; gap:10px; align-items:center;">
+      <div style="font-weight:600;">Paint</div>
+      <div style="font-weight:600;">Swatch</div>
+      <div style="font-weight:600;">Hex</div>
+      {% for name, hexv in paint_items %}
+        <div>{{ name }}</div>
+        <div style="height:22px; border:1px solid #bbb; background: {{ hexv }};"></div>
+        <div><code>{{ hexv }}</code></div>
+      {% endfor %}
+    </div>
+
+    <h3 style="margin-top:26px;">Folders</h3>
     <div class="hint">Input: {{ in_dir }} | Output: {{ out_dir }}</div>
   </body>
 </html>

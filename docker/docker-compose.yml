@@ -27,6 +27,9 @@ services:
     restart: unless-stopped
     ports:
       - "4040:4040"
+    environment:
+      - CONFIG_PATH=/config/color_palette_config.ini
     volumes:
       - /mnt/nas2/Color_Palette_Creation/incoming:/mnt/in
       - /mnt/nas2/Color_Palette_Creation/processed:/mnt/out
+      - /mnt/nas2/Color_Palette_Creation/color_palette_config.ini:/config/color_palette_config.ini:ro
