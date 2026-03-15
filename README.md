@@ -30,7 +30,7 @@ If you enable Drive uploads, `rclone.conf` contains OAuth tokens. **Do not commi
 Mount it into the container as read-only.
 
 ## Output layout
-For a base name `ketevan`:
-- `/mnt/nas2/Color_Palette_Creation/processed/ketevan/ketevan_report.pdf`
-- `/mnt/nas2/Color_Palette_Creation/processed/ketevan/charts/*.png`
-- `/mnt/nas2/Color_Palette_Creation/processed/ketevan/palettes/*_palette-swatches.jpeg`
+For a base name `example`:
+- `/mnt/nas2/Color_Palette_Creation/processed/example/example_report.pdf`
+- `/mnt/nas2/Color_Palette_Creation/processed/example/charts/*.png`
+- `/mnt/nas2/Color_Palette_Creation/processed/example/palettes/*_palette-swatches.jpeg`
