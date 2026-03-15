@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import json
 import shutil
@@ -133,6 +134,50 @@ def resolve_archive_dir(cfg):
     fallback = os.path.join(output_dir, "_processed_inputs")
     safe_makedirs(fallback)
     return fallback
+
+
+def load_paints_from_ini(path: str):
+    """Load paint definitions from INI.
+
+    Supports:
+      [paints]
+      Titanium White = #FFFFFF
+
+    Optional:
+      [paints.enabled]
+      Titanium White = true|false
+
+    Returns dict[name] = HEX (uppercase).
+    """
+    if not os.path.exists(path):
+        return {}
+
+    p = configparser.ConfigParser()
+    p.optionxform = str  # preserve paint names
+    try:
+        p.read(path)
+    except Exception:
+        return {}
+
+    if not p.has_section("paints"):
+        return {}
+
+    enabled = {}
+    if p.has_section("paints.enabled"):
+        for k, v in p.items("paints.enabled"):
+            enabled[k.strip()] = str(v).strip().lower() in ("1", "true", "yes", "on")
+
+    paints = {}
+    for name, hexv in p.items("paints"):
+        n = name.strip()
+        v = str(hexv).strip()
+        if not re.match(r"^#[0-9a-fA-F]{6}$", v):
+            continue
+        if enabled and not enabled.get(n, True):
+            continue
+        paints[n] = v.upper()
+
+    return paints
 
 
 # =========================
@@ -811,6 +856,15 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     cfg_path = os.environ.get("CONFIG_PATH", os.path.join(script_dir, "color_palette_config.ini"))
     cfg = read_config(cfg_path)
+
+    # Optional: override pigments from config.ini so the worker matches the GUI.
+    paints = load_paints_from_ini(cfg_path)
+    if paints:
+        global PIGMENTS_HEX, CUSTOM_PIGMENT_COLORS
+        PIGMENTS_HEX = paints
+        # default chip colors to the same hex values
+        CUSTOM_PIGMENT_COLORS = dict(paints)
+        print(f"🎨 Loaded {len(paints)} paint(s) from [paints] in config.")
 
     input_dir = cfg["input_dir"]
     output_dir = cfg["output_dir"]
