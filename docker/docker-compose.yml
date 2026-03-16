@@ -9,15 +9,15 @@ services:
       - CONFIG_PATH=/config/color_palette_config.ini
     volumes:
       # Incoming pairs
-      - /mnt/nas2/Color_Palette_Creation/incoming:/mnt/in
+      - ${INCOMING_DIR:-./data/incoming}:/mnt/in
       # Processed outputs (per-base folders)
-      - /mnt/nas2/Color_Palette_Creation/processed:/mnt/out
+      - ${PROCESSED_DIR:-./data/processed}:/mnt/out
       # Archive of processed inputs
-      - /mnt/nas2/Color_Palette_Creation/archive:/mnt/archive
+      - ${ARCHIVE_DIR:-./data/archive}:/mnt/archive
       # Config (must be a FILE, not a directory)
-      - /mnt/nas2/Color_Palette_Creation/color_palette_config.ini:/config/color_palette_config.ini:ro
-      # rclone config (contains tokens; keep private on host)
-      - /home/brett/.config/rclone/rclone.conf:/root/.config/rclone/rclone.conf:ro
+      - ${CONFIG_FILE:-./data/color_palette_config.ini}:/config/color_palette_config.ini:ro
+      # Optional rclone config (contains tokens; do not commit). Only required if [drive].enabled=true
+      - ${RCLONE_CONFIG:-./data/rclone.conf}:/root/.config/rclone/rclone.conf:ro
 
   color_palette_creation_w_gui_ui:
     build:
@@ -26,10 +26,10 @@ services:
     container_name: color_palette_creation_w_gui_ui
     restart: unless-stopped
     ports:
-      - "4040:4040"
+      - "${UI_PORT:-4040}:4040"
     environment:
       - CONFIG_PATH=/config/color_palette_config.ini
     volumes:
-      - /mnt/nas2/Color_Palette_Creation/incoming:/mnt/in
-      - /mnt/nas2/Color_Palette_Creation/processed:/mnt/out
-      - /mnt/nas2/Color_Palette_Creation/color_palette_config.ini:/config/color_palette_config.ini:ro
+      - ${INCOMING_DIR:-./data/incoming}:/mnt/in
+      - ${PROCESSED_DIR:-./data/processed}:/mnt/out
+      - ${CONFIG_FILE:-./data/color_palette_config.ini}:/config/color_palette_config.ini:ro

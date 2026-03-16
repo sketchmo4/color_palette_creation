@@ -31,6 +31,27 @@ allow_black_fallback=true
 black_fallback_deltae=6.0
 
 [drive]
-enabled=true
+# Drive upload is optional. To enable it:
+# 1) Put an rclone.conf on the host and mount it into the worker container.
+# 2) Set enabled=true and remote=<your remote name>
+enabled=false
 remote=palette_drive
 mode=full_folder
+
+[paints]
+# Optional: override the default paint set used by the mixing solver.
+Titanium White=#FFFFFF
+Yellow Ochre=#DFAF2C
+Burnt Sienna=#E97451
+Burnt Umber=#8A3324
+Paynes Gray=#536878
+Ivory Black=#231F20
+
+[paints.enabled]
+# Optional: enable/disable specific paints without deleting them.
+Titanium White=true
+Yellow Ochre=true
+Burnt Sienna=true
+Burnt Umber=true
+Paynes Gray=true
+Ivory Black=true

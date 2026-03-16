@@ -10,7 +10,7 @@ Watcher that takes paired images (original + marked), extracts color swatches fr
 - Outputs go to `processed/NAME/NAME_report.pdf` plus charts/palettes.
 
 ## Configuration
-This project uses an INI file (mounted into the container):
+This project uses an INI file (mounted into the containers):
 - Container path: `/config/color_palette_config.ini`
 
 Example config is at:
@@ -20,14 +20,23 @@ Example config is at:
 - `[watch] marked_suffix=_x`
 - `[outputs] palette_include_variants=false|true`
 - `[mix] step_pct=2.5`, `max_pigments=4`, black fallback controls
-- `[drive] enabled=true` to upload outputs via rclone
+- `[paints]` / `[paints.enabled]` to control what paints the solver uses
+- `[drive] enabled=true` to upload outputs via rclone (optional)
 
-## Docker compose
-See `docker/docker-compose.yml`.
+## Docker compose (portable)
+The compose file is written to be portable and not tied to any specific NAS paths.
+
+1) Copy env example:
+- `cp .env.example .env`
+
+2) Start:
+- `cd docker && docker compose up -d --build`
+
+By default it will create a local `./data/` folder for inputs/outputs/config.
 
 ### Security note (rclone)
 If you enable Drive uploads, `rclone.conf` contains OAuth tokens. **Do not commit it.**
-Mount it into the container as read-only.
+Mount it into the container as read-only (see `.env.example`).
 
 ## Output layout
 For a base name `example`:

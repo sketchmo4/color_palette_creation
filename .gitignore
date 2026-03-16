@@ -7,7 +7,10 @@ __pycache__/
 *.env
 rclone.conf
 
-# outputs
+# local runtime data
+/data/
+
+# outputs (legacy)
 processed/
 incoming/
 archive/
