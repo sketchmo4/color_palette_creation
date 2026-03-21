@@ -33,3 +33,19 @@ services:
       - ${INCOMING_DIR:-./data/incoming}:/mnt/in
       - ${PROCESSED_DIR:-./data/processed}:/mnt/out
       - ${CONFIG_FILE:-./data/color_palette_config.ini}:/config/color_palette_config.ini:ro
+
+  palette_telegram_bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.telegram_bot
+    container_name: palette_telegram_bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - IN_DIR=/mnt/in
+      - OUT_DIR=/mnt/out
+      - STATE_PATH=/data/state.json
+    volumes:
+      - ${INCOMING_DIR:-./data/incoming}:/mnt/in
+      - ${PROCESSED_DIR:-./data/processed}:/mnt/out
+      - ${BOT_DATA_DIR:-./data/bot}:/data
