@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
@@ -34,6 +34,20 @@ def auto_base() -> str:
     return datetime.now().strftime("input_%Y%m%d_%H%M%S")
 
 
+
+
+def read_ini() -> configparser.ConfigParser:
+    cfg = configparser.ConfigParser()
+    cfg.optionxform = str
+    if CONFIG_PATH.exists():
+        cfg.read(CONFIG_PATH)
+    return cfg
+
+
+def write_ini(cfg: configparser.ConfigParser) -> None:
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with CONFIG_PATH.open('w', encoding='utf-8') as f:
+        cfg.write(f)
 def load_paints() -> Dict[str, str]:
     """Read paints from CONFIG_PATH if present, otherwise return defaults.
 
@@ -97,6 +111,74 @@ def home(request: Request):
     )
 
 
+
+
+@app.get("/paints", response_class=HTMLResponse)
+def paints_page(request: Request):
+    paints = load_paints()
+    # preserve display order: if config has [paints], keep that file order; else alphabetical
+    cfg = read_ini()
+    items = []
+    if cfg.has_section('paints'):
+        for k, v in cfg.items('paints'):
+            if re.match(r"^#[0-9a-fA-F]{6}$", str(v).strip()):
+                items.append((k.strip(), str(v).strip().upper()))
+    else:
+        items = sorted(paints.items(), key=lambda kv: kv[0].lower())
+
+    enabled = {}
+    if cfg.has_section('paints.enabled'):
+        for k, v in cfg.items('paints.enabled'):
+            enabled[k.strip()] = str(v).strip().lower() in ('1','true','yes','on')
+
+    return templates.TemplateResponse(request, 'paints.html', {
+        'paint_items': items,
+        'enabled': enabled,
+        'config_path': str(CONFIG_PATH),
+    })
+
+
+@app.post("/paints")
+def paints_save(
+    request: Request,
+    name: list[str] = Form(default=[]),
+    hexv: list[str] = Form(default=[]),
+    enabled: list[str] = Form(default=[]),
+):
+    # enabled list contains paint names that are checked
+    checked = set(enabled)
+
+    items = []
+    for n, h in zip(name, hexv):
+        n = (n or '').strip()
+        h = (h or '').strip().upper()
+        if not n:
+            continue
+        if not re.match(r"^#[0-9A-F]{6}$", h):
+            raise HTTPException(400, f"Invalid hex for '{n}': {h}")
+        items.append((n, h))
+
+    if len(items) < 2:
+        raise HTTPException(400, 'Need at least 2 paints enabled/defined')
+
+    cfg = read_ini()
+    if cfg.has_section('paints'):
+        cfg.remove_section('paints')
+    if cfg.has_section('paints.enabled'):
+        cfg.remove_section('paints.enabled')
+
+    cfg.add_section('paints')
+    for n, h in items:
+        cfg.set('paints', n, h)
+
+    cfg.add_section('paints.enabled')
+    for n, _h in items:
+        cfg.set('paints.enabled', n, 'true' if n in checked else 'false')
+
+    write_ini(cfg)
+
+    return RedirectResponse(url='/paints', status_code=303)
+
 @app.post("/upload")
 def upload(
     base: Optional[str] = Form(default=None),
@@ -120,8 +202,51 @@ def upload(
     save_upload(dest_orig, original)
     save_upload(dest_mark, marked)
 
-    return {"ok": True, "base": b, "original": str(dest_orig), "marked": str(dest_mark)}
+    # Redirect to job page for status + auto-open
+    return RedirectResponse(url=f"/jobs/{b}", status_code=303)
 
+
+
+
+@app.get("/jobs/{base}", response_class=HTMLResponse)
+def job_page(request: Request, base: str):
+    if not SAFE_BASE_RE.match(base):
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "job.html", {"base": base})
+
+
+@app.get("/api/jobs/{base}/status")
+def job_status(base: str):
+    if not SAFE_BASE_RE.match(base):
+        raise HTTPException(404)
+    base_dir = OUT_DIR / base
+    pdf = base_dir / f"{base}_report.pdf"
+    drive_state = base_dir / ".drive_upload.json"
+
+    charts_dir = base_dir / "charts"
+    palettes_dir = base_dir / "palettes"
+
+    charts = []
+    if charts_dir.exists():
+        charts = [p.name for p in charts_dir.iterdir() if p.is_file()]
+
+    palettes = []
+    if palettes_dir.exists():
+        palettes = [p.name for p in palettes_dir.iterdir() if p.is_file()]
+
+    uploaded = False
+    if drive_state.exists():
+        uploaded = True
+
+    return {
+        "base": base,
+        "exists": base_dir.exists(),
+        "pdf": pdf.exists(),
+        "pdf_url": f"/runs/{base}/pdf" if pdf.exists() else None,
+        "charts_count": len(charts),
+        "palettes_count": len(palettes),
+        "drive_uploaded": uploaded,
+    }
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs(request: Request):

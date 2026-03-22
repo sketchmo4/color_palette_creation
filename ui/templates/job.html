@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Job {{ base }}</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 820px; }
+      .card { border:1px solid #ddd; padding:14px; border-radius:12px; margin-top:12px; }
+      .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+      .badge { padding:4px 10px; border-radius:999px; background:#eee; }
+      a { text-decoration:none; }
+      button { padding:8px 12px; }
+      code { background:#f4f4f4; padding:2px 6px; border-radius:6px; }
+    </style>
+  </head>
+  <body>
+    <h1>Job: <code>{{ base }}</code></h1>
+    <div class="row">
+      <a href="/">← Upload</a>
+      <a href="/runs">Runs</a>
+      <a href="/paints">Paints</a>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div id="status" class="badge">Loading…</div>
+        <div id="drive" class="badge">Drive: unknown</div>
+      </div>
+      <div style="margin-top:10px;" id="links"></div>
+      <div style="margin-top:10px; color:#555;" id="meta"></div>
+    </div>
+
+    <script>
+      const base = {{ base | tojson }};
+      let opened = false;
+
+      async function poll() {
+        const r = await fetch(`/api/jobs/${base}/status`);
+        if (!r.ok) {
+          document.getElementById('status').textContent = 'Not found';
+          return;
+        }
+        const j = await r.json();
+
+        const statusEl = document.getElementById('status');
+        const driveEl = document.getElementById('drive');
+        const linksEl = document.getElementById('links');
+        const metaEl = document.getElementById('meta');
+
+        if (!j.exists) {
+          statusEl.textContent = 'Queued';
+        } else if (!j.pdf) {
+          statusEl.textContent = 'Processing…';
+        } else {
+          statusEl.textContent = 'Done';
+        }
+
+        driveEl.textContent = j.drive_uploaded ? 'Drive: confirmed' : 'Drive: pending/unknown';
+
+        let html = '';
+        if (j.pdf_url) {
+          html += `<div><a href="${j.pdf_url}" target="_blank">Open PDF report</a></div>`;
+        } else {
+          html += `<div>(PDF not ready yet)</div>`;
+        }
+        linksEl.innerHTML = html;
+
+        metaEl.textContent = `Charts: ${j.charts_count} | Palettes: ${j.palettes_count}`;
+
+        // QoL: auto-open PDF once it's ready
+        if (j.pdf_url && !opened) {
+          opened = true;
+          window.open(j.pdf_url, '_blank');
+        }
+
+        if (!j.pdf || !j.drive_uploaded) {
+          setTimeout(poll, 2000);
+        }
+      }
+
+      poll();
+    </script>
+  </body>
+</html>
