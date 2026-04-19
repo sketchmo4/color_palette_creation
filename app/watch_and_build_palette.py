@@ -984,14 +984,16 @@ if __name__ == "__main__":
             black_fallback_deltae=cfg.get("black_fallback_deltae", 6.0),
         )
 
+        perc = (best or {}).get("color_percentages", {})
         out = {
             "input_hexes": hexes,
             "base_hex": base_hex,
             "mix": {
-                "pigments": best["pigments"] if best else [],
-                "weights_pct": [round(float(w) * 100.0, 2) for w in (best["weights"] if best else [])],
-                "mixed_hex": best["mixed_hex"] if best else None,
-                "deltaE": best["deltaE"] if best else None,
+                "pigments": list(perc.keys()),
+                "weights_pct": [round(float(v), 2) for v in perc.values()],
+                "mixed_hex": (best or {}).get("mixed_color_hex"),
+                "deltaE": (best or {}).get("deltaE"),
+                "used_black": (best or {}).get("used_black"),
             },
         }
         print(json.dumps(out, indent=2))
