@@ -9,11 +9,12 @@ from collections import Counter
 from itertools import combinations
 
 import subprocess
+import argparse
 
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 from skimage.measure import label, regionprops
-from skimage.color import rgb2lab
+from skimage.color import rgb2lab, lab2rgb
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -207,6 +208,45 @@ CUSTOM_PIGMENT_COLORS = {
 # =========================
 # Color helpers
 # =========================
+
+
+def normalize_hex(h: str) -> str:
+    h = (h or '').strip()
+    if not h:
+        raise ValueError('empty hex')
+    if not h.startswith('#'):
+        h = '#' + h
+    # allow short #abc
+    if re.match(r'^#[0-9a-fA-F]{3}$', h):
+        h = '#' + ''.join([c*2 for c in h[1:]])
+    if not re.match(r'^#[0-9a-fA-F]{6}$', h):
+        raise ValueError(f'invalid hex: {h}')
+    return h.lower()
+
+
+def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str:
+    """Combine multiple hex colors into a single representative 'base' color.
+
+    method:
+      - lab_mean: convert each color to Lab, average, convert back to RGB.
+        This tends to preserve perceived lightness/chroma better than raw RGB mean.
+    """
+    if not hex_codes:
+        raise ValueError('need at least one hex code')
+
+    hex_norm = [normalize_hex(h) for h in hex_codes]
+    rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
+
+    if method == 'lab_mean':
+        labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
+        lab = np.mean(labs, axis=0)
+        rgb = lab2rgb(lab.reshape((1, 1, 3))).reshape((3,))
+        rgb = np.clip(rgb, 0, 1)
+        return mcolors.to_hex(rgb)
+
+    # fallback: RGB mean
+    rgb = np.clip(np.mean(rgbs, axis=0), 0, 1)
+    return mcolors.to_hex(rgb)
 
 def hex_color(rgb):
     return "#{:02x}{:02x}{:02x}".format(*rgb)
@@ -916,4 +956,45 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description="Color palette creation watcher + utilities")
+    ap.add_argument("--watch", action="store_true", help="Run the folder watcher (default)")
+    ap.add_argument("--hexes", type=str, default="", help="Comma-separated hex codes to combine into a base color, e.g. '#aa1122,#33bbcc'")
+    ap.add_argument("--method", type=str, default="lab_mean", help="Combine method: lab_mean|rgb_mean")
+
+    args = ap.parse_args()
+
+    if args.hexes:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        cfg_path = os.environ.get("CONFIG_PATH", os.path.join(script_dir, "color_palette_config.ini"))
+        cfg = read_config(cfg_path)
+
+        # match pigments to config if present
+        paints = load_paints_from_ini(cfg_path)
+        if paints:
+            PIGMENTS_HEX = paints
+            CUSTOM_PIGMENT_COLORS = dict(paints)
+
+        hexes = [h.strip() for h in args.hexes.split(',') if h.strip()]
+        base_hex = combine_hexes_to_base(hexes, method=args.method)
+        best = solve_mix_for_target(
+            base_hex,
+            step_pct=cfg.get("mix_step_pct", 2.5),
+            max_pigments=cfg.get("max_pigments", 4),
+            allow_black_fallback=cfg.get("allow_black_fallback", True),
+            black_fallback_deltae=cfg.get("black_fallback_deltae", 6.0),
+        )
+
+        out = {
+            "input_hexes": hexes,
+            "base_hex": base_hex,
+            "mix": {
+                "pigments": best["pigments"] if best else [],
+                "weights_pct": [round(float(w) * 100.0, 2) for w in (best["weights"] if best else [])],
+                "mixed_hex": best["mixed_hex"] if best else None,
+                "deltaE": best["deltaE"] if best else None,
+            },
+        }
+        print(json.dumps(out, indent=2))
+    else:
+        # default behavior
+        main()
