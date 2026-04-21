@@ -4,7 +4,12 @@ import time
 import configparser
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, List
+
+import numpy as np
+from matplotlib import colors as mcolors
+from skimage.color import rgb2lab, lab2rgb
+from scipy.optimize import minimize
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
@@ -16,6 +21,127 @@ OUT_DIR = Path(os.environ.get("OUT_DIR", "/mnt/out"))
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", "/config/color_palette_config.ini"))
 
 SAFE_BASE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+
+def rgb01_to_lab(rgb01: np.ndarray) -> np.ndarray:
+    lab = rgb2lab(rgb01.reshape((1, 1, 3)))
+    return lab.reshape((3,))
+
+
+def deltae76(lab1: np.ndarray, lab2: np.ndarray) -> float:
+    return float(np.linalg.norm(lab1 - lab2))
+
+
+def mix_rgb01(weights: np.ndarray, pigment_rgbs: np.ndarray) -> np.ndarray:
+    return np.clip(np.sum(weights.reshape((-1, 1)) * pigment_rgbs, axis=0), 0, 1)
+
+
+def round_weights_to_step(weights: np.ndarray, step_pct: float) -> np.ndarray:
+    step = step_pct / 100.0
+    w = np.clip(weights, 0, 1)
+    if float(np.sum(w)) <= 0:
+        w = np.ones_like(w) / len(w)
+    w = w / float(np.sum(w))
+
+    if step > 0:
+        q = np.round(w / step) * step
+        if float(np.sum(q)) == 0:
+            q[int(np.argmax(w))] = step
+        total = float(np.sum(q))
+        diff = 1.0 - total
+        j = int(np.argmax(q))
+        q[j] = np.clip(q[j] + diff, 0, 1)
+        q = np.clip(q, 0, 1)
+        s = float(np.sum(q))
+        q = (q / s) if s > 0 else (np.ones_like(q) / len(q))
+        return q
+
+    return w
+
+
+def normalize_hex(h: str) -> str:
+    h = (h or '').strip()
+    if not h:
+        raise ValueError('empty hex')
+    if not h.startswith('#'):
+        h = '#' + h
+    if re.match(r'^#[0-9a-fA-F]{3}$', h):
+        h = '#' + ''.join([c * 2 for c in h[1:]])
+    if not re.match(r'^#[0-9a-fA-F]{6}$', h):
+        raise ValueError(f'invalid hex: {h}')
+    return h.lower()
+
+
+def combine_hexes_to_base(hex_codes: List[str], method: str = 'lab_mean') -> str:
+    hex_norm = [normalize_hex(h) for h in hex_codes if (h or '').strip()]
+    if not hex_norm:
+        raise ValueError('need at least one hex')
+    rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
+    if method == 'lab_mean':
+        labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
+        lab = np.mean(labs, axis=0)
+        rgb = lab2rgb(lab.reshape((1, 1, 3))).reshape((3,))
+        rgb = np.clip(rgb, 0, 1)
+        return mcolors.to_hex(rgb)
+    rgb = np.clip(np.mean(rgbs, axis=0), 0, 1)
+    return mcolors.to_hex(rgb)
+
+
+def solve_mix_for_target(target_hex: str, paints: Dict[str, str], step_pct: float, max_pigments: int) -> dict:
+    target_rgb = np.array(mcolors.hex2color(target_hex), dtype=float)
+    target_lab = rgb01_to_lab(target_rgb)
+
+    pigment_items = [(k, np.array(mcolors.hex2color(v), dtype=float)) for k, v in paints.items()]
+
+    best = None
+    from itertools import combinations
+
+    for k in range(2, min(max_pigments, len(pigment_items)) + 1):
+        for combo in combinations(pigment_items, k):
+            names = [x[0] for x in combo]
+            rgbs = np.stack([x[1] for x in combo], axis=0)
+
+            def obj(w):
+                w = np.clip(np.array(w, dtype=float), 0, 1)
+                s = float(np.sum(w))
+                w = (w / s) if s > 0 else (np.ones((k,), dtype=float) / k)
+                mixed_rgb = mix_rgb01(w, rgbs)
+                mixed_lab = rgb01_to_lab(mixed_rgb)
+                return deltae76(mixed_lab, target_lab)
+
+            x0 = np.ones((k,), dtype=float) / k
+            bounds = [(0, 1) for _ in range(k)]
+            cons = {"type": "eq", "fun": lambda w: float(np.sum(w)) - 1.0}
+
+            try:
+                res = minimize(obj, x0, bounds=bounds, constraints=[cons])
+                w = np.array(res.x, dtype=float)
+            except Exception:
+                w = x0
+
+            w = np.clip(w, 0, 1)
+            w = w / float(np.sum(w)) if float(np.sum(w)) > 0 else x0
+            wq = round_weights_to_step(w, step_pct=step_pct)
+
+            mixed_rgb = mix_rgb01(wq, rgbs)
+            mixed_lab = rgb01_to_lab(mixed_rgb)
+            de = deltae76(mixed_lab, target_lab)
+
+            if best is None or de < best['deltaE']:
+                best = {
+                    'pigments': names,
+                    'weights': wq,
+                    'mixed_hex': mcolors.to_hex(mixed_rgb),
+                    'deltaE': float(de),
+                }
+
+    if best is None:
+        return {"color_percentages": {}, "mixed_hex": None, "deltaE": None}
+
+    perc = {n: float(w * 100.0) for n, w in zip(best['pigments'], best['weights']) if w > 0}
+    perc = dict(sorted(perc.items(), key=lambda kv: kv[1], reverse=True))
+    return {"color_percentages": perc, "mixed_hex": best['mixed_hex'], "deltaE": best['deltaE']}
 
 DEFAULT_PAINTS: Dict[str, str] = {
     "Titanium White": "#FFFFFF",
@@ -247,6 +373,61 @@ def job_status(base: str):
         "palettes_count": len(palettes),
         "drive_uploaded": uploaded,
     }
+
+
+
+@app.get("/local-color", response_class=HTMLResponse)
+def local_color_page(request: Request):
+    return templates.TemplateResponse(request, 'local_color.html', {
+        'result': None,
+        'error': None,
+        'default_method': 'lab_mean',
+    })
+
+
+@app.post("/local-color", response_class=HTMLResponse)
+def local_color_compute(
+    request: Request,
+    hexes: str = Form(default=''),
+    method: str = Form(default='lab_mean'),
+):
+    try:
+        hex_list = [h.strip() for h in (hexes or '').split(',') if h.strip()]
+        base_hex = combine_hexes_to_base(hex_list, method=method)
+
+        cfg = read_ini()
+        # paints from config or default
+        paints = load_paints()
+
+        # enabled filtering
+        if cfg.has_section('paints.enabled'):
+            enabled = {k.strip(): str(v).strip().lower() in ('1','true','yes','on') for k,v in cfg.items('paints.enabled')}
+            paints = {k:v for k,v in paints.items() if enabled.get(k, True)}
+
+        step_pct = float(cfg.get('mix', 'step_pct', fallback='2.5')) if cfg.has_section('mix') else 2.5
+        max_pigments = int(cfg.get('mix', 'max_pigments', fallback='4')) if cfg.has_section('mix') else 4
+
+        mix = solve_mix_for_target(base_hex, paints=paints, step_pct=step_pct, max_pigments=max_pigments)
+
+        result = {
+            'input_hexes': hex_list,
+            'base_hex': base_hex,
+            'method': method,
+            'mix': mix,
+        }
+        return templates.TemplateResponse(request, 'local_color.html', {
+            'result': result,
+            'error': None,
+            'default_method': method,
+            'hexes': ','.join(hex_list),
+        })
+    except Exception as e:
+        return templates.TemplateResponse(request, 'local_color.html', {
+            'result': None,
+            'error': str(e),
+            'default_method': method,
+            'hexes': hexes,
+        })
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs(request: Request):

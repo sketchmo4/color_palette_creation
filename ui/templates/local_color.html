@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Local color</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 920px; }
+      input[type=text], textarea, select { width: 100%; padding: 10px; font-size: 16px; }
+      button { padding: 10px 14px; font-size: 16px; margin-top: 12px; }
+      .hint { color:#555; font-size: 14px; margin-top: 6px; }
+      code { background:#f4f4f4; padding:2px 6px; border-radius:6px; }
+      .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+      .sw { width: 90px; height: 28px; border:1px solid #bbb; border-radius: 8px; }
+      table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+      th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align:left; }
+    </style>
+  </head>
+  <body>
+    <h1>Local color (combine hexes)</h1>
+    <div class="row">
+      <a href="/">← Upload</a>
+      <a href="/runs">Runs</a>
+      <a href="/paints">Paints</a>
+    </div>
+
+    <form method="post" action="/local-color">
+      <label style="display:block; margin-top:14px; font-weight:600;">Hex codes (comma-separated)</label>
+      <input type="text" name="hexes" value="{{ hexes or '' }}" placeholder="#aabbcc,#112233,#ffcc00" />
+      <div class="hint">Tip: you can paste from the palette script output. Example: <code>#bb7a73</code></div>
+
+      <label style="display:block; margin-top:14px; font-weight:600;">Combine method</label>
+      <select name="method">
+        <option value="lab_mean" {% if default_method=='lab_mean' %}selected{% endif %}>Lab mean (recommended)</option>
+        <option value="rgb_mean" {% if default_method=='rgb_mean' %}selected{% endif %}>RGB mean</option>
+      </select>
+
+      <button type="submit">Compute local color</button>
+    </form>
+
+    {% if error %}
+      <div style="margin-top:14px; padding:12px; border:1px solid #c33; background:#fff3f3; border-radius:10px;">
+        <b>Error:</b> {{ error }}
+      </div>
+    {% endif %}
+
+    {% if result %}
+      <h2 style="margin-top:20px;">Result</h2>
+
+      <div class="row">
+        <div>
+          <div class="hint">Base (combined)</div>
+          <div class="row">
+            <div class="sw" style="background: {{ result.base_hex }};"></div>
+            <div><code>{{ result.base_hex }}</code></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:18px;">Suggested mix (from current paints)</h3>
+      {% if result.mix and result.mix.color_percentages %}
+        <table>
+          <thead><tr><th>Paint</th><th>%</th></tr></thead>
+          <tbody>
+            {% for name, pct in result.mix.color_percentages.items() %}
+              <tr><td>{{ name }}</td><td>{{ '%.1f'|format(pct) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="hint" style="margin-top:10px;">Mixed hex: <code>{{ result.mix.mixed_hex }}</code> (ΔE ≈ {{ '%.2f'|format(result.mix.deltaE) if result.mix.deltaE is not none else 'n/a' }})</div>
+      {% else %}
+        <div class="hint">No mix result (need at least 2 paints enabled).</div>
+      {% endif %}
+
+    {% endif %}
+  </body>
+</html>
