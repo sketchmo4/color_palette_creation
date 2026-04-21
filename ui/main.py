@@ -2,6 +2,7 @@ import os
 import re
 import time
 import configparser
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
@@ -310,6 +311,7 @@ def upload(
     base: Optional[str] = Form(default=None),
     original: UploadFile = File(...),
     marked: UploadFile = File(...),
+    mask_type: str = Form(default="general"),
 ):
     b = (base or "").strip()
     if b:
@@ -327,6 +329,13 @@ def upload(
 
     save_upload(dest_orig, original)
     save_upload(dest_mark, marked)
+
+    # optional: sidecar metadata for the worker
+    mt = (mask_type or "general").strip().lower()
+    if mt not in ("general", "skin"):
+        mt = "general"
+    meta_path = IN_DIR / f"{b}.meta.json"
+    meta_path.write_text(json.dumps({"mask_type": mt}), encoding="utf-8")
 
     # Redirect to job page for status + auto-open
     return RedirectResponse(url=f"/jobs/{b}", status_code=303)

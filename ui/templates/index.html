@@ -29,6 +29,13 @@
       <label>Marked image (same scene with markups)</label>
       <input type="file" name="marked" accept="image/*" required />
 
+      <label>Mask type</label>
+      <select name="mask_type">
+        <option value="general" selected>General</option>
+        <option value="skin">Skin</option>
+      </select>
+      <div class="hint">If set to Skin, the worker will compute a single “local skin color” from all marked swatches and generate one paint recipe for that local color.</div>
+
       <button type="submit">Upload</button>
     </form>
 

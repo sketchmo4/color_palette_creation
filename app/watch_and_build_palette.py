@@ -665,6 +665,44 @@ def add_fullpage_image_to_pdf(pdf: PdfPages, image_path: str, title: str):
     plt.close(fig)
 
 
+
+
+def add_local_color_to_pdf(pdf: PdfPages, title: str, base_hex: str, mix_result: dict):
+    """Render a simple page showing the combined local color + suggested paint mix."""
+    fig, ax = plt.subplots(figsize=(8.5, 11))
+    ax.axis('off')
+
+    fig.suptitle(title, fontsize=16, weight='bold', y=0.95)
+
+    ax.add_patch(plt.Rectangle((0.15, 0.72), 0.7, 0.12, color=base_hex, transform=ax.transAxes, ec='black', lw=1))
+    ax.text(0.15, 0.67, f"Base (combined): {base_hex}", transform=ax.transAxes, fontsize=14)
+
+    perc = (mix_result or {}).get('color_percentages', {})
+    mixed_hex = (mix_result or {}).get('mixed_color_hex')
+    de = (mix_result or {}).get('deltaE')
+
+    y = 0.58
+    ax.text(0.15, y, "Suggested mix:", transform=ax.transAxes, fontsize=14, weight='bold')
+    y -= 0.05
+
+    if perc:
+        for name, pct in perc.items():
+            ax.text(0.18, y, f"• {name}: {pct:.1f}%", transform=ax.transAxes, fontsize=12)
+            y -= 0.035
+    else:
+        ax.text(0.18, y, "(no mix found)", transform=ax.transAxes, fontsize=12)
+        y -= 0.035
+
+    if mixed_hex:
+        y -= 0.02
+        ax.text(0.15, y, f"Mixed hex: {mixed_hex}", transform=ax.transAxes, fontsize=12)
+        y -= 0.035
+    if de is not None:
+        ax.text(0.15, y, f"ΔE: {float(de):.2f}", transform=ax.transAxes, fontsize=12)
+
+    pdf.savefig(fig)
+    plt.close(fig)
+
 def save_pie_chart_image(percentages, hex_color, out_path, title):
     labels = list(percentages.keys())
     sizes = list(percentages.values())
@@ -712,6 +750,42 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
 
     mix_data = build_mix_data(swatches_list, cfg)
 
+    # Optional: combined local color for a specific mask type (e.g. skin)
+    meta_path = os.path.join(cfg["input_dir"], f"{stem}.meta.json")
+    mask_type = "general"
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                mask_type = (json.load(f).get('mask_type') or 'general').strip().lower()
+        except Exception:
+            mask_type = "general"
+
+    local_color_result = None
+    if mask_type == 'skin' and swatches_list:
+        try:
+            skin_hexes = [s.get('color') for s in swatches_list if s.get('color')]
+            base_hex = combine_hexes_to_base(skin_hexes, method='lab_mean')
+            local_mix = solve_mix_for_target(
+                base_hex,
+                step_pct=cfg.get('mix_step_pct', 2.5),
+                max_pigments=cfg.get('max_pigments', 4),
+                allow_black_fallback=cfg.get('allow_black_fallback', True),
+                black_fallback_deltae=cfg.get('black_fallback_deltae', 6.0),
+            )
+            local_color_result = {
+                'mask_type': mask_type,
+                'input_hexes': skin_hexes,
+                'base_hex': base_hex,
+                'mix': local_mix,
+            }
+            mix_data['local_color'] = local_color_result
+
+            with open(os.path.join(out_dir, f"{stem}_local_{mask_type}.json"), 'w', encoding='utf-8') as f:
+                json.dump(local_color_result, f, indent=2)
+        except Exception as e:
+            print('⚠️ local color failed:', e)
+
+
     # optional mix json
     if cfg.get("write_mix_json", False):
         mix_json_path = os.path.join(out_dir, f"{stem}_mix.json")
@@ -725,6 +799,10 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
     with PdfPages(report_path) as pdf:
         if cfg["include_bb_in_pdf"]:
             add_fullpage_image_to_pdf(pdf, bb_image_path, title=f"{stem} — Bounding Boxes")
+        # Optional local color page (e.g. skin)
+        if local_color_result is not None:
+            add_local_color_to_pdf(pdf, title=f"{stem} — Skin Local Color", base_hex=local_color_result['base_hex'], mix_result=local_color_result['mix'])
+
 
         entries = mix_data.get("entries", [])
         for idx, entry in enumerate(entries, start=1):
