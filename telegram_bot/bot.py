@@ -43,6 +43,7 @@ class Pending:
     base: str
     step: str  # 'orig' or 'marked'
     orig_ext: Optional[str] = None
+    mask_type: str = "general"
 
 
 def get_pending(chat_id: int) -> Optional[Pending]:
@@ -62,26 +63,43 @@ def set_pending(chat_id: int, p: Optional[Pending]) -> None:
             "base": p.base,
             "step": p.step,
             "orig_ext": p.orig_ext,
+            "mask_type": p.mask_type,
         }
     save_state(st)
 
 
 async def cmd_palette(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
     base = None
-    if context.args:
-        base = context.args[0].strip()
-        if not SAFE_BASE_RE.match(base):
-            await update.message.reply_text(
-                "Base name must be 1-64 chars: letters/numbers/_/-. Example: /palette example"
-            )
-            return
+    mask_type = "general"
+
+    # Accept:
+    #   /palette
+    #   /palette skin
+    #   /palette <base>
+    #   /palette <base> skin
+    args = [a.strip().lower() for a in (context.args or []) if a.strip()]
+
+    if args:
+        if args[0] in ("skin", "general"):
+            mask_type = args[0]
+            base = auto_base()
+        else:
+            base = context.args[0].strip()
+            if not SAFE_BASE_RE.match(base):
+                await update.message.reply_text(
+                    "Base name must be 1-64 chars: letters/numbers/_/-. Example: /palette example"
+                )
+                return
+            if len(context.args) > 1 and context.args[1].strip().lower() in ("skin", "general"):
+                mask_type = context.args[1].strip().lower()
     else:
         base = auto_base()
 
-    set_pending(chat_id, Pending(base=base, step="orig", orig_ext=None))
+    set_pending(chat_id, Pending(base=base, step="orig", orig_ext=None, mask_type=mask_type))
     await update.message.reply_text(
-        f"Palette intake started. Base: {base}\n\nSend ORIGINAL image (as a *document* preferred).",
+        f"Palette intake started. Base: {base}\nMask type: {mask_type}\n\nSend ORIGINAL image (as a *document* preferred).",
         parse_mode="Markdown",
     )
 
@@ -98,7 +116,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not p:
         await update.message.reply_text("No active intake. Send /palette to start.")
         return
-    await update.message.reply_text(f"Pending base={p.base} step={p.step}")
+    await update.message.reply_text(f"Pending base={p.base} step={p.step} mask_type={p.mask_type}")
 
 
 def _ext_from_filename(name: Optional[str]) -> str:
@@ -185,7 +203,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dest_tmp = IN_DIR / f".{p.base}{ext}.tmp"
         await _download_to(update, context, dest_tmp)
         dest_tmp.replace(dest_final)
-        set_pending(chat_id, Pending(base=p.base, step="marked", orig_ext=ext))
+        set_pending(chat_id, Pending(base=p.base, step="marked", orig_ext=ext, mask_type=p.mask_type))
         await update.message.reply_text(
             f"Got ORIGINAL. Now send MARKED image for base {p.base} (will be saved as {p.base}_x{ext})."
         )
@@ -197,9 +215,19 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dest_tmp = IN_DIR / f".{p.base}_x{use_ext}.tmp"
         await _download_to(update, context, dest_tmp)
         dest_tmp.replace(dest_final)
+
+        # write optional meta sidecar for the worker
+        try:
+            mt = (p.mask_type or 'general').strip().lower()
+            if mt not in ('general', 'skin'):
+                mt = 'general'
+            (IN_DIR / f"{p.base}.meta.json").write_text(json.dumps({"mask_type": mt}), encoding='utf-8')
+        except Exception:
+            pass
+
         set_pending(chat_id, None)
         await update.message.reply_text(
-            f"✅ Queued: {p.base}\nI'll notify you when Drive upload is confirmed.")
+            f"✅ Queued: {p.base} (mask={p.mask_type})\nI'll notify you when Drive upload is confirmed.")
         # background watcher
         asyncio.create_task(_watch_and_notify(chat_id, p.base, context))
         return
