@@ -2,6 +2,9 @@
 
 Watcher that takes paired images (original + marked), extracts color swatches from the marked differences, generates mix suggestions for a limited paint palette, and writes a per-image PDF report.
 
+## User guide
+See: `docs/USER_GUIDE.md`
+
 ## How it works (high level)
 - Drop two files into the input folder:
   - `NAME.jpg`
