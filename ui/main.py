@@ -75,15 +75,25 @@ def normalize_hex(h: str) -> str:
     return h.lower()
 
 
-def combine_hexes_to_base(hex_codes: List[str], method: str = 'lab_mean') -> str:
+def combine_hexes_to_base(hex_codes: List[str], method: str = 'lab_mean', range_pos: float = 45.0) -> str:
     hex_norm = [normalize_hex(h) for h in hex_codes if (h or '').strip()]
     if not hex_norm:
         raise ValueError('need at least one hex')
 
-    if method in ('l_percentile_40', 'l_percentile_45', 'l_percentile_50'):
+    if method in ('l_percentile_40', 'l_percentile_45', 'l_percentile_50', 'l_range'):
         rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
         labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
         L = labs[:, 0]
+        if method == 'l_range':
+            Lmax = float(np.max(L)); Lmin = float(np.min(L))
+            denom = (Lmax - Lmin)
+            if denom <= 1e-9:
+                return hex_norm[0]
+            pos = 100.0 * (Lmax - L) / denom
+            target = max(0.0, min(100.0, float(range_pos)))
+            j = int(np.argmin(np.abs(pos - target)))
+            return hex_norm[j]
+
         order = np.argsort(L)
         p = 0.40 if method == 'l_percentile_40' else (0.45 if method == 'l_percentile_45' else 0.50)
         j = int(round(p * (len(order) - 1)))
@@ -380,6 +390,7 @@ def upload(
     marked: UploadFile = File(...),
     mask_type: str = Form(default="general"),
     custom_mask: str = Form(default=""),
+    range_pos: float = Form(default=45.0),
 ):
     b = (base or "").strip()
     if b:
@@ -403,7 +414,7 @@ def upload(
     if not SAFE_MASK_RE.match(mt):
         mt = "general"
     meta_path = IN_DIR / f"{b}.meta.json"
-    meta_path.write_text(json.dumps({"mask_type": mt}), encoding="utf-8")
+    meta_path.write_text(json.dumps({"mask_type": mt, "range_pos": float(range_pos)}), encoding="utf-8")
 
     # Redirect to job page for status + auto-open
     return RedirectResponse(url=f"/jobs/{b}", status_code=303)
@@ -458,7 +469,8 @@ def local_color_page(request: Request):
     return templates.TemplateResponse(request, 'local_color.html', {
         'result': None,
         'error': None,
-        'default_method': 'l_percentile_40',
+        'default_method': 'l_range',
+        'range_pos': 45,
     })
 
 
@@ -467,10 +479,11 @@ def local_color_compute(
     request: Request,
     hexes: str = Form(default=''),
     method: str = Form(default='lab_mean'),
+    range_pos: float = Form(default=45.0),
 ):
     try:
         hex_list = [h.strip() for h in (hexes or '').split(',') if h.strip()]
-        base_hex = combine_hexes_to_base(hex_list, method=method)
+        base_hex = combine_hexes_to_base(hex_list, method=method, range_pos=range_pos)
 
         cfg = read_ini()
         # paints from config or default
@@ -497,6 +510,7 @@ def local_color_compute(
             'error': None,
             'default_method': method,
             'hexes': ','.join(hex_list),
+            'range_pos': range_pos,
         })
     except Exception as e:
         return templates.TemplateResponse(request, 'local_color.html', {
@@ -504,6 +518,7 @@ def local_color_compute(
             'error': str(e),
             'default_method': method,
             'hexes': hexes,
+            'range_pos': range_pos,
         })
 
 

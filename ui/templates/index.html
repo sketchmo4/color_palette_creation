@@ -43,6 +43,10 @@
       <input type="text" name="custom_mask" placeholder="e.g. hatband" />
       <div class="hint">Must be filename-safe: letters/numbers/_/- (max 64). If set, this overrides the dropdown.</div>
 
+      <label>Local range position (0–100)</label>
+      <input type="text" name="range_pos" value="45" />
+      <div class="hint">For mask runs (skin/hair/etc), local base is chosen by normalizing swatches from brightest=0 to darkest=100 and selecting this position (default 45).</div>
+
       <button type="submit">Upload</button>
     </form>
 

@@ -45,6 +45,7 @@ class Pending:
     step: str  # 'orig' or 'marked'
     orig_ext: Optional[str] = None
     mask_type: str = "general"
+    range_pos: float = 45.0
 
 
 def get_pending(chat_id: int) -> Optional[Pending]:
@@ -65,6 +66,7 @@ def set_pending(chat_id: int, p: Optional[Pending]) -> None:
             "step": p.step,
             "orig_ext": p.orig_ext,
             "mask_type": p.mask_type,
+            "range_pos": p.range_pos,
         }
     save_state(st)
 
@@ -74,6 +76,7 @@ async def cmd_palette(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     base = None
     mask_type = "general"
+    range_pos = 45.0
 
     # Accept:
     #   /palette
@@ -84,6 +87,16 @@ async def cmd_palette(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     args_raw = [a.strip() for a in (context.args or []) if a.strip()]
     args = [a.strip().lower() for a in args_raw]
+
+    # optional: last arg can be a range_pos number (0-100)
+    if args and re.match(r'^\d+(\.\d+)?$', args[-1]):
+        try:
+            range_pos = float(args[-1])
+            range_pos = max(0.0, min(100.0, range_pos))
+            args = args[:-1]
+            args_raw = args_raw[:-1]
+        except Exception:
+            range_pos = 45.0
 
     if args:
         # /palette <mask>
@@ -102,7 +115,7 @@ async def cmd_palette(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         base = auto_base()
 
-    set_pending(chat_id, Pending(base=base, step="orig", orig_ext=None, mask_type=mask_type))
+    set_pending(chat_id, Pending(base=base, step="orig", orig_ext=None, mask_type=mask_type, range_pos=range_pos))
     await update.message.reply_text(
         f"Palette intake started. Base: {base}\nMask type: {mask_type}\n\nSend ORIGINAL image (as a *document* preferred).",
         parse_mode="Markdown",
@@ -121,7 +134,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not p:
         await update.message.reply_text("No active intake. Send /palette to start.")
         return
-    await update.message.reply_text(f"Pending base={p.base} step={p.step} mask_type={p.mask_type}")
+    await update.message.reply_text(f"Pending base={p.base} step={p.step} mask_type={p.mask_type} range_pos={p.range_pos}")
 
 
 def _ext_from_filename(name: Optional[str]) -> str:
@@ -208,7 +221,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dest_tmp = IN_DIR / f".{p.base}{ext}.tmp"
         await _download_to(update, context, dest_tmp)
         dest_tmp.replace(dest_final)
-        set_pending(chat_id, Pending(base=p.base, step="marked", orig_ext=ext, mask_type=p.mask_type))
+        set_pending(chat_id, Pending(base=p.base, step="marked", orig_ext=ext, mask_type=p.mask_type, range_pos=p.range_pos))
         await update.message.reply_text(
             f"Got ORIGINAL. Now send MARKED image for base {p.base} (will be saved as {p.base}_x{ext})."
         )
@@ -226,7 +239,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mt = (p.mask_type or 'general').strip().lower()
             if not SAFE_MASK_RE.match(mt):
                 mt = 'general'
-            (IN_DIR / f"{p.base}.meta.json").write_text(json.dumps({"mask_type": mt}), encoding='utf-8')
+            (IN_DIR / f"{p.base}.meta.json").write_text(json.dumps({"mask_type": mt, "range_pos": float(p.range_pos)}), encoding='utf-8')
         except Exception:
             pass
 

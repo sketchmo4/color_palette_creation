@@ -224,7 +224,7 @@ def normalize_hex(h: str) -> str:
     return h.lower()
 
 
-def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str:
+def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean', range_pos: float = 45.0) -> str:
     """Combine multiple hex colors into a single representative 'base' color.
 
     method:
@@ -232,6 +232,7 @@ def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str
       - l_percentile_40: pick the swatch whose Lab L* is at the 40th percentile.
       - l_percentile_45: pick the swatch whose Lab L* is at the 45th percentile.
       - l_percentile_50: pick the swatch at the median Lab L*.
+      - l_range: normalize swatch L* between brightest=0 and darkest=100, then pick closest to `range_pos` (default 45).
       - rgb_mean: simple RGB average.
 
     Notes:
@@ -242,10 +243,25 @@ def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str
 
     hex_norm = [normalize_hex(h) for h in hex_codes]
 
-    if method in ('l_percentile_40', 'l_percentile_45', 'l_percentile_50'):
+    if method in ('l_percentile_40', 'l_percentile_45', 'l_percentile_50', 'l_range'):
         rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
         labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
         L = labs[:, 0]
+
+        if method == 'l_range':
+            Lmax = float(np.max(L))
+            Lmin = float(np.min(L))
+            denom = (Lmax - Lmin)
+            if denom <= 1e-9:
+                # all same lightness; just return first
+                return hex_norm[0]
+            # brightest -> 0, darkest -> 100
+            pos = 100.0 * (Lmax - L) / denom
+            target = float(range_pos)
+            target = max(0.0, min(100.0, target))
+            j = int(np.argmin(np.abs(pos - target)))
+            return hex_norm[j]
+
         order = np.argsort(L)
         p = 0.40 if method == 'l_percentile_40' else (0.45 if method == 'l_percentile_45' else 0.50)
         j = int(round(p * (len(order) - 1)))
@@ -769,19 +785,26 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
 
     # Optional: combined local color for a specific mask type (e.g. skin)
     meta_path = os.path.join(cfg["input_dir"], f"{stem}.meta.json")
+    meta = {}
     mask_type = "general"
+    range_pos = 45.0
     if os.path.exists(meta_path):
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
-                mask_type = (json.load(f).get('mask_type') or 'general').strip().lower()
+                meta = json.load(f) or {}
+            mask_type = str(meta.get('mask_type') or 'general').strip().lower()
+            range_pos = float(meta.get('range_pos', 45.0))
         except Exception:
+            meta = {}
             mask_type = "general"
+            range_pos = 45.0
 
     local_color_result = None
     if mask_type != 'general' and swatches_list:
         try:
             skin_hexes = [s.get('color') for s in swatches_list if s.get('color')]
-            base_hex = combine_hexes_to_base(skin_hexes, method='l_percentile_40')
+            # default is a foundation value around the midrange of highlight→shadow
+            base_hex = combine_hexes_to_base(skin_hexes, method='l_range', range_pos=range_pos)
             local_mix = solve_mix_for_target(
                 base_hex,
                 step_pct=cfg.get('mix_step_pct', 2.5),

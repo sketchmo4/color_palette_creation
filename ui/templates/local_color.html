@@ -30,12 +30,17 @@
 
       <label style="display:block; margin-top:14px; font-weight:600;">Combine method</label>
       <select name="method">
-        <option value="l_percentile_40" {% if default_method=='l_percentile_40' %}selected{% endif %}>L* percentile 40% (foundation / lighter)</option>
-        <option value="l_percentile_45" {% if default_method=='l_percentile_45' %}selected{% endif %}>L* percentile 45% (foundation)</option>
-        <option value="l_percentile_50" {% if default_method=='l_percentile_50' %}selected{% endif %}>L* percentile 50% (median)</option>
+        <option value="l_range" {% if default_method=='l_range' %}selected{% endif %}>Range-based L* (brightest=0, darkest=100)</option>
+        <option value="l_percentile_40" {% if default_method=='l_percentile_40' %}selected{% endif %}>L* percentile 40%</option>
+        <option value="l_percentile_45" {% if default_method=='l_percentile_45' %}selected{% endif %}>L* percentile 45%</option>
+        <option value="l_percentile_50" {% if default_method=='l_percentile_50' %}selected{% endif %}>L* percentile 50%</option>
         <option value="lab_mean" {% if default_method=='lab_mean' %}selected{% endif %}>Lab mean</option>
         <option value="rgb_mean" {% if default_method=='rgb_mean' %}selected{% endif %}>RGB mean</option>
       </select>
+
+      <label style="display:block; margin-top:14px; font-weight:600;">Range position (0–100)</label>
+      <input type="text" name="range_pos" value="{{ range_pos if range_pos is not none else 45 }}" />
+      <div class="hint">Only used for “Range-based L*”. Default: 45</div>
 
       <button type="submit">Compute local color</button>
     </form>
