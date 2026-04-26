@@ -229,7 +229,8 @@ def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str
 
     method:
       - lab_mean: convert each color to Lab, average, convert back to RGB.
-      - l_percentile_45: pick the swatch whose Lab L* is at the 45th percentile (slightly lighter than median).
+      - l_percentile_40: pick the swatch whose Lab L* is at the 40th percentile.
+      - l_percentile_45: pick the swatch whose Lab L* is at the 45th percentile.
       - l_percentile_50: pick the swatch at the median Lab L*.
       - rgb_mean: simple RGB average.
 
@@ -241,12 +242,12 @@ def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str
 
     hex_norm = [normalize_hex(h) for h in hex_codes]
 
-    if method in ('l_percentile_45', 'l_percentile_50'):
+    if method in ('l_percentile_40', 'l_percentile_45', 'l_percentile_50'):
         rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
         labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
         L = labs[:, 0]
         order = np.argsort(L)
-        p = 0.45 if method == 'l_percentile_45' else 0.50
+        p = 0.40 if method == 'l_percentile_40' else (0.45 if method == 'l_percentile_45' else 0.50)
         j = int(round(p * (len(order) - 1)))
         j = max(0, min(len(order) - 1, j))
         return hex_norm[int(order[j])]
@@ -780,7 +781,7 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
     if mask_type != 'general' and swatches_list:
         try:
             skin_hexes = [s.get('color') for s in swatches_list if s.get('color')]
-            base_hex = combine_hexes_to_base(skin_hexes, method='l_percentile_45')
+            base_hex = combine_hexes_to_base(skin_hexes, method='l_percentile_40')
             local_mix = solve_mix_for_target(
                 base_hex,
                 step_pct=cfg.get('mix_step_pct', 2.5),
@@ -814,10 +815,25 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
     # Write PDF per-base
     with PdfPages(report_path) as pdf:
         if cfg["include_bb_in_pdf"]:
-            add_fullpage_image_to_pdf(pdf, bb_image_path, title=f"{stem} — Bounding Boxes")
-        # Optional local color page (e.g. skin)
+            add_fullpage_image_to_pdf(pdf, bb_image_path, title=f"{stem} — Bounding Boxes")        # Optional local color pages (any mask type)
         if local_color_result is not None:
-            add_local_color_to_pdf(pdf, title=f"{stem} — {mask_type} Local Color", base_hex=local_color_result['base_hex'], mix_result=local_color_result['mix'])
+            # Local color summary page
+            add_local_color_to_pdf(
+                pdf,
+                title=f"{stem} — {mask_type} Local Color",
+                base_hex=local_color_result['base_hex'],
+                mix_result=local_color_result['mix'],
+            )
+
+            # Local mix pie chart page (same style as swatch pages)
+            try:
+                lp = (local_color_result.get('mix') or {}).get('color_percentages', {})
+                if lp:
+                    local_chart_path = os.path.join(charts_dir, f"{stem}_local_{mask_type}_pie.png")
+                    save_pie_chart_image(lp, local_color_result['base_hex'], local_chart_path, title=f"{stem} {mask_type} Local")
+                    add_fullpage_image_to_pdf(pdf, local_chart_path, title=f"{stem} — {mask_type} Local Mix Pie Chart")
+            except Exception as e:
+                print('⚠️ local pie chart failed:', e)
 
 
         entries = mix_data.get("entries", [])

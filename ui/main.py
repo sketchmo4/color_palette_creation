@@ -80,12 +80,12 @@ def combine_hexes_to_base(hex_codes: List[str], method: str = 'lab_mean') -> str
     if not hex_norm:
         raise ValueError('need at least one hex')
 
-    if method in ('l_percentile_45', 'l_percentile_50'):
+    if method in ('l_percentile_40', 'l_percentile_45', 'l_percentile_50'):
         rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
         labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
         L = labs[:, 0]
         order = np.argsort(L)
-        p = 0.45 if method == 'l_percentile_45' else 0.50
+        p = 0.40 if method == 'l_percentile_40' else (0.45 if method == 'l_percentile_45' else 0.50)
         j = int(round(p * (len(order) - 1)))
         j = max(0, min(len(order) - 1, j))
         return hex_norm[int(order[j])]
@@ -458,7 +458,7 @@ def local_color_page(request: Request):
     return templates.TemplateResponse(request, 'local_color.html', {
         'result': None,
         'error': None,
-        'default_method': 'l_percentile_45',
+        'default_method': 'l_percentile_40',
     })
 
 
