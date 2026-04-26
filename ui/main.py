@@ -22,6 +22,7 @@ OUT_DIR = Path(os.environ.get("OUT_DIR", "/mnt/out"))
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", "/config/color_palette_config.ini"))
 
 SAFE_BASE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+SAFE_MASK_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 
 
@@ -365,6 +366,7 @@ def upload(
     original: UploadFile = File(...),
     marked: UploadFile = File(...),
     mask_type: str = Form(default="general"),
+    custom_mask: str = Form(default=""),
 ):
     b = (base or "").strip()
     if b:
@@ -384,8 +386,8 @@ def upload(
     save_upload(dest_mark, marked)
 
     # optional: sidecar metadata for the worker
-    mt = (mask_type or "general").strip().lower()
-    if mt not in ("general", "skin"):
+    mt = (custom_mask or "").strip().lower() or (mask_type or "general").strip().lower()
+    if not SAFE_MASK_RE.match(mt):
         mt = "general"
     meta_path = IN_DIR / f"{b}.meta.json"
     meta_path.write_text(json.dumps({"mask_type": mt}), encoding="utf-8")
@@ -559,6 +561,78 @@ def local_skin_pie_png(base: str):
     ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140, textprops={'fontsize': 10})
     ax.axis('equal')
     fig.suptitle(f"{base} — Skin local mix", fontsize=14, weight='bold')
+    fig.savefig(out_path, dpi=160, bbox_inches='tight')
+    plt.close(fig)
+
+    return FileResponse(str(out_path), media_type='image/png', filename=out_path.name)
+
+
+
+@app.get("/runs/{base}/mask/{mask_type}/deltas", response_class=HTMLResponse)
+def mask_deltas_page(request: Request, base: str, mask_type: str):
+    if not SAFE_BASE_RE.match(base) or not SAFE_MASK_RE.match(mask_type):
+        raise HTTPException(404)
+
+    base_dir = OUT_DIR / base
+    local_path = base_dir / f"{base}_local_{mask_type}.json"
+    mix_path = base_dir / f"{base}_mix.json"
+
+    local = load_json(local_path)
+    mix = load_json(mix_path)
+
+    local_mix = (local.get('mix') or {}).get('color_percentages') or {}
+
+    rows = []
+    entries = (mix.get('entries') or [])
+    for i, entry in enumerate(entries, start=1):
+        target_hex = entry.get('Hex Color')
+        target_perc = entry.get('Color Percentages') or {}
+        if not target_hex or not target_perc:
+            continue
+
+        start_local, adds, notes = compute_parts_from_local(local_mix, target_perc, total_parts=20.0)
+        rows.append({
+            'idx': i,
+            'hex': target_hex,
+            'start_local_parts': start_local,
+            'adds': dict(sorted(adds.items(), key=lambda kv: kv[1], reverse=True)),
+            'notes': notes,
+        })
+
+    return templates.TemplateResponse(request, 'mask_deltas.html', {
+        'base': base,
+        'mask_type': mask_type,
+        'local_path_exists': local_path.exists(),
+        'mix_path_exists': mix_path.exists(),
+        'local': local,
+        'rows': rows,
+    })
+
+
+@app.get("/runs/{base}/mask/{mask_type}/local-pie.png")
+def mask_local_pie_png(base: str, mask_type: str):
+    if not SAFE_BASE_RE.match(base) or not SAFE_MASK_RE.match(mask_type):
+        raise HTTPException(404)
+
+    base_dir = OUT_DIR / base
+    local_path = base_dir / f"{base}_local_{mask_type}.json"
+    local = load_json(local_path)
+    perc = (local.get('mix') or {}).get('color_percentages') or {}
+    if not perc:
+        raise HTTPException(404, f'No local {mask_type} mix found')
+
+    paints = load_paints()
+    labels = list(perc.keys())
+    sizes = list(perc.values())
+    colors = [paints.get(l, '#cccccc') for l in labels]
+
+    out_path = base_dir / f"{base}_local_{mask_type}_pie.png"
+
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140, textprops={'fontsize': 10})
+    ax.axis('equal')
+    fig.suptitle(f"{base} — {mask_type} local mix", fontsize=14, weight='bold')
     fig.savefig(out_path, dpi=160, bbox_inches='tight')
     plt.close(fig)
 

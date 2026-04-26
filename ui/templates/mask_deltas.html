@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ base }} — {{ mask_type }} deltas</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 980px; }
+      .hint { color:#555; font-size: 14px; }
+      .card { border:1px solid #ddd; border-radius: 12px; padding: 14px; margin-top: 12px; }
+      code { background:#f4f4f4; padding:2px 6px; border-radius:6px; }
+      .sw { width: 74px; height: 22px; border:1px solid #bbb; border-radius: 8px; display:inline-block; vertical-align:middle; }
+      table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+      th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align:left; vertical-align: top; }
+      ul { margin: 6px 0 0 18px; }
+    </style>
+  </head>
+  <body>
+    <h1>{{ base }} — {{ mask_type }} “add-only” mix guidance</h1>
+    <div>
+      <a href="/runs">← Runs</a>
+      &nbsp;|&nbsp;
+      <a href="/jobs/{{ base }}">Job</a>
+    </div>
+
+    <div class="card">
+      <div><b>Required files</b></div>
+      <div class="hint">Local file present: <b>{{ 'yes' if local_path_exists else 'no' }}</b> (expects <code>{{ base }}_local_{{ mask_type }}.json</code>)</div>
+      <div class="hint">Swatch mix file present: <b>{{ 'yes' if mix_path_exists else 'no' }}</b> (expects <code>{{ base }}_mix.json</code> — enable <code>write_mix_json=true</code> to generate)</div>
+
+      {% if local_path_exists %}
+        <div style="margin-top:10px;">
+          <div class="hint">Local base:</div>
+          <div>
+            <span class="sw" style="background: {{ local.base_hex }};"></span>
+            <code>{{ local.base_hex }}</code>
+            &nbsp;|&nbsp;
+            <a href="/runs/{{ base }}/mask/{{ mask_type }}/local-pie.png" target="_blank">Local mix pie chart</a>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if rows %}
+      <h2 style="margin-top:18px;">Swatches</h2>
+      <div class="hint">Each row assumes you want a final pile of <code>20 parts</code> of the target swatch mix. It scales down the starting local pile if needed so you only have to add paint.</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:80px;">#</th>
+            <th style="width:160px;">Target</th>
+            <th>Instructions (parts)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.idx }}</td>
+              <td>
+                <span class="sw" style="background: {{ r.hex }};"></span>
+                <code>{{ r.hex }}</code>
+              </td>
+              <td>
+                <div><b>Start:</b> {{ '%.2f'|format(r.start_local_parts) }} parts of <i>local {{ mask_type }} mix</i></div>
+                <div style="margin-top:6px;"><b>Add:</b></div>
+                {% if r.adds %}
+                  <ul>
+                    {% for name, parts in r.adds.items() %}
+                      <li>{{ name }}: {{ '%.2f'|format(parts) }} parts</li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <div class="hint">(No additions needed — target already matches local mix closely)</div>
+                {% endif %}
+
+                {% if r.notes %}
+                  <div class="hint" style="margin-top:8px;">
+                    {% for n in r.notes %}
+                      <div>Note: {{ n }}</div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="card">
+        <b>No delta rows yet.</b>
+        <div class="hint" style="margin-top:6px;">To generate rows: enable <code>write_mix_json=true</code>, then run a new job using this same mask type.</div>
+      </div>
+    {% endif %}
+  </body>
+</html>

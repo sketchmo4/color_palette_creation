@@ -25,7 +25,13 @@
               {% if b.pdf %}
                 <a href="/runs/{{ b.base }}/pdf">{{ b.pdf }}</a>
                 &nbsp;|&nbsp;
-                <a href="/runs/{{ b.base }}/skin-deltas">skin deltas</a>
+                <a href="/runs/{{ b.base }}/mask/skin/deltas">skin deltas</a>
+                &nbsp;|&nbsp;
+                <a href="/runs/{{ b.base }}/mask/hair/deltas">hair deltas</a>
+                &nbsp;|&nbsp;
+                <a href="/runs/{{ b.base }}/mask/lips/deltas">lips deltas</a>
+                &nbsp;|&nbsp;
+                <a href="/runs/{{ b.base }}/mask/accessory/deltas">accessory deltas</a>
               {% else %}
                 (not ready)
               {% endif %}

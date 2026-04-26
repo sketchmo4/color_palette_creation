@@ -18,6 +18,7 @@ OUT_DIR = Path(os.environ.get("OUT_DIR", "/mnt/out"))
 STATE_PATH = Path(os.environ.get("STATE_PATH", "/data/state.json"))
 
 SAFE_BASE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+SAFE_MASK_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 
 def auto_base() -> str:
@@ -76,24 +77,28 @@ async def cmd_palette(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Accept:
     #   /palette
-    #   /palette skin
+    #   /palette <mask>
     #   /palette <base>
-    #   /palette <base> skin
-    args = [a.strip().lower() for a in (context.args or []) if a.strip()]
+    #   /palette <base> <mask>
+    # Where <mask> is filename-safe: letters/numbers/_/-
+
+    args_raw = [a.strip() for a in (context.args or []) if a.strip()]
+    args = [a.strip().lower() for a in args_raw]
 
     if args:
-        if args[0] in ("skin", "general"):
+        # /palette <mask>
+        if SAFE_MASK_RE.match(args[0]) and args[0] != 'general' and len(args) == 1:
             mask_type = args[0]
             base = auto_base()
         else:
-            base = context.args[0].strip()
+            base = args_raw[0].strip()
             if not SAFE_BASE_RE.match(base):
                 await update.message.reply_text(
                     "Base name must be 1-64 chars: letters/numbers/_/-. Example: /palette example"
                 )
                 return
-            if len(context.args) > 1 and context.args[1].strip().lower() in ("skin", "general"):
-                mask_type = context.args[1].strip().lower()
+            if len(args) > 1 and SAFE_MASK_RE.match(args[1]):
+                mask_type = args[1]
     else:
         base = auto_base()
 
@@ -219,7 +224,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # write optional meta sidecar for the worker
         try:
             mt = (p.mask_type or 'general').strip().lower()
-            if mt not in ('general', 'skin'):
+            if not SAFE_MASK_RE.match(mt):
                 mt = 'general'
             (IN_DIR / f"{p.base}.meta.json").write_text(json.dumps({"mask_type": mt}), encoding='utf-8')
         except Exception:

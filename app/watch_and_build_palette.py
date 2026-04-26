@@ -761,7 +761,7 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
             mask_type = "general"
 
     local_color_result = None
-    if mask_type == 'skin' and swatches_list:
+    if mask_type != 'general' and swatches_list:
         try:
             skin_hexes = [s.get('color') for s in swatches_list if s.get('color')]
             base_hex = combine_hexes_to_base(skin_hexes, method='lab_mean')
@@ -801,7 +801,7 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
             add_fullpage_image_to_pdf(pdf, bb_image_path, title=f"{stem} — Bounding Boxes")
         # Optional local color page (e.g. skin)
         if local_color_result is not None:
-            add_local_color_to_pdf(pdf, title=f"{stem} — Skin Local Color", base_hex=local_color_result['base_hex'], mix_result=local_color_result['mix'])
+            add_local_color_to_pdf(pdf, title=f"{stem} — {mask_type} Local Color", base_hex=local_color_result['base_hex'], mix_result=local_color_result['mix'])
 
 
         entries = mix_data.get("entries", [])
