@@ -153,6 +153,59 @@ DEFAULT_PAINTS: Dict[str, str] = {
     "Ivory Black": "#231F20",
 }
 
+
+
+def load_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text('utf-8'))
+    except Exception:
+        return {}
+
+
+def compute_parts_from_local(local_perc: dict, target_perc: dict, total_parts: float = 20.0):
+    """Return (start_local_parts, additions_parts, notes).
+
+    We scale down the starting local pile so none of its pigment parts exceed the target.
+    Then we only add pigments to reach the target mix.
+
+    total_parts is the size of the final target pile in 'parts'.
+    """
+    # Normalize keys
+    local = {str(k): float(v) for k,v in (local_perc or {}).items()}
+    target = {str(k): float(v) for k,v in (target_perc or {}).items()}
+
+    # Ensure all target pigments exist in local dict for ratios
+    # Compute the maximum fraction of the local pile we can start with without overshooting any pigment.
+    ratios = []
+    for name, lpct in local.items():
+        if lpct <= 0:
+            continue
+        tpct = float(target.get(name, 0.0))
+        ratios.append(tpct / lpct)
+
+    frac = min(ratios) if ratios else 0.0
+    frac = max(0.0, min(1.0, frac))
+
+    start_local_parts = total_parts * frac
+
+    additions = {}
+    for name, tpct in target.items():
+        if tpct <= 0:
+            continue
+        t_parts = total_parts * (tpct / 100.0)
+        l_parts = start_local_parts * (float(local.get(name, 0.0)) / 100.0)
+        add = max(0.0, t_parts - l_parts)
+        if add > 1e-6:
+            additions[name] = add
+
+    notes = []
+    if frac < 1.0:
+        notes.append(f"Start with {frac:.2f}× of the local mix (scaled down) to avoid overshooting some pigments.")
+    if frac == 0.0:
+        notes.append("Local mix has pigments not present in the target; starting local pile must be ~0 parts for a strict add-only path.")
+
+    return start_local_parts, additions, notes
+
 app = FastAPI(title="Color Palette Creation UI")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -437,6 +490,79 @@ def local_color_compute(
             'default_method': method,
             'hexes': hexes,
         })
+
+
+
+@app.get("/runs/{base}/skin-deltas", response_class=HTMLResponse)
+def skin_deltas_page(request: Request, base: str):
+    if not SAFE_BASE_RE.match(base):
+        raise HTTPException(404)
+
+    base_dir = OUT_DIR / base
+    local_path = base_dir / f"{base}_local_skin.json"
+    mix_path = base_dir / f"{base}_mix.json"
+
+    local = load_json(local_path)
+    mix = load_json(mix_path)
+
+    local_mix = (local.get('mix') or {}).get('color_percentages') or {}
+
+    rows = []
+    entries = (mix.get('entries') or [])
+    for i, entry in enumerate(entries, start=1):
+        target_hex = entry.get('Hex Color')
+        target_perc = entry.get('Color Percentages') or {}
+        if not target_hex or not target_perc:
+            continue
+
+        start_local, adds, notes = compute_parts_from_local(local_mix, target_perc, total_parts=20.0)
+        rows.append({
+            'idx': i,
+            'hex': target_hex,
+            'start_local_parts': start_local,
+            'adds': dict(sorted(adds.items(), key=lambda kv: kv[1], reverse=True)),
+            'notes': notes,
+        })
+
+    return templates.TemplateResponse(request, 'skin_deltas.html', {
+        'base': base,
+        'local_path_exists': local_path.exists(),
+        'mix_path_exists': mix_path.exists(),
+        'local': local,
+        'rows': rows,
+    })
+
+
+@app.get("/runs/{base}/local-skin-pie.png")
+def local_skin_pie_png(base: str):
+    if not SAFE_BASE_RE.match(base):
+        raise HTTPException(404)
+
+    base_dir = OUT_DIR / base
+    local_path = base_dir / f"{base}_local_skin.json"
+    local = load_json(local_path)
+    perc = (local.get('mix') or {}).get('color_percentages') or {}
+    if not perc:
+        raise HTTPException(404, 'No local skin mix found')
+
+    # Use paint colors from config for chips
+    paints = load_paints()
+
+    labels = list(perc.keys())
+    sizes = list(perc.values())
+    colors = [paints.get(l, '#cccccc') for l in labels]
+
+    out_path = base_dir / f"{base}_local_skin_pie.png"
+
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140, textprops={'fontsize': 10})
+    ax.axis('equal')
+    fig.suptitle(f"{base} — Skin local mix", fontsize=14, weight='bold')
+    fig.savefig(out_path, dpi=160, bbox_inches='tight')
+    plt.close(fig)
+
+    return FileResponse(str(out_path), media_type='image/png', filename=out_path.name)
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs(request: Request):

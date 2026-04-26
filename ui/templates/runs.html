@@ -24,6 +24,8 @@
             <td>
               {% if b.pdf %}
                 <a href="/runs/{{ b.base }}/pdf">{{ b.pdf }}</a>
+                &nbsp;|&nbsp;
+                <a href="/runs/{{ b.base }}/skin-deltas">skin deltas</a>
               {% else %}
                 (not ready)
               {% endif %}
