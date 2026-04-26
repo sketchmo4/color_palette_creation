@@ -229,12 +229,28 @@ def combine_hexes_to_base(hex_codes: list[str], method: str = 'lab_mean') -> str
 
     method:
       - lab_mean: convert each color to Lab, average, convert back to RGB.
-        This tends to preserve perceived lightness/chroma better than raw RGB mean.
+      - l_percentile_45: pick the swatch whose Lab L* is at the 45th percentile (slightly lighter than median).
+      - l_percentile_50: pick the swatch at the median Lab L*.
+      - rgb_mean: simple RGB average.
+
+    Notes:
+      - Percentile methods return *one of the existing swatch colors* (no averaging), which often avoids a muddy/darker mean.
     """
     if not hex_codes:
         raise ValueError('need at least one hex code')
 
     hex_norm = [normalize_hex(h) for h in hex_codes]
+
+    if method in ('l_percentile_45', 'l_percentile_50'):
+        rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
+        labs = np.array([rgb01_to_lab(rgb) for rgb in rgbs], dtype=float)
+        L = labs[:, 0]
+        order = np.argsort(L)
+        p = 0.45 if method == 'l_percentile_45' else 0.50
+        j = int(round(p * (len(order) - 1)))
+        j = max(0, min(len(order) - 1, j))
+        return hex_norm[int(order[j])]
+
     rgbs = np.array([mcolors.hex2color(h) for h in hex_norm], dtype=float)
 
     if method == 'lab_mean':
@@ -764,7 +780,7 @@ def process_one_pair(stem, orig_path, marked_path, cfg):
     if mask_type != 'general' and swatches_list:
         try:
             skin_hexes = [s.get('color') for s in swatches_list if s.get('color')]
-            base_hex = combine_hexes_to_base(skin_hexes, method='lab_mean')
+            base_hex = combine_hexes_to_base(skin_hexes, method='l_percentile_45')
             local_mix = solve_mix_for_target(
                 base_hex,
                 step_pct=cfg.get('mix_step_pct', 2.5),

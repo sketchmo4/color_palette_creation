@@ -30,7 +30,9 @@
 
       <label style="display:block; margin-top:14px; font-weight:600;">Combine method</label>
       <select name="method">
-        <option value="lab_mean" {% if default_method=='lab_mean' %}selected{% endif %}>Lab mean (recommended)</option>
+        <option value="l_percentile_45" {% if default_method=='l_percentile_45' %}selected{% endif %}>L* percentile 45% (foundation / less dark)</option>
+        <option value="l_percentile_50" {% if default_method=='l_percentile_50' %}selected{% endif %}>L* percentile 50% (median)</option>
+        <option value="lab_mean" {% if default_method=='lab_mean' %}selected{% endif %}>Lab mean</option>
         <option value="rgb_mean" {% if default_method=='rgb_mean' %}selected{% endif %}>RGB mean</option>
       </select>
 
